@@ -7,3 +7,4 @@ node_modules/.bin/babylon
 node_modules/.bin/browserslist
 node_modules/.bin/concurrently
 node_modules/.bin/css-blank-pseudo
+node_modules

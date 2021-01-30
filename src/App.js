@@ -1,10 +1,10 @@
 import React from 'react';
 import './App.css';
-// maps currency codes to currency symbol
 import * as CurrencySymbols from './currencies';
 
 /*
- * * TO DO: destructure, sort, loading, show all countries once the continent has been selected, CSS
+ * TO DO: If click on country without continent being selected what should the behavior be?
+ * I think I need to create the dropdown and sync it with the selected country
 */
 
 class App extends React.Component {
@@ -16,7 +16,7 @@ class App extends React.Component {
       // contains ISO2 Code and country Name
       countryArray: [],
       chosenContinent: null,
-      chosenCountry: "",
+      chosenCountryCode: "",
       // map of abbreviatedName ==> countryName
       countryListMap: new Map(),
       fullCountryNameAbbrName: new Map(),
@@ -28,9 +28,8 @@ class App extends React.Component {
       iso2PhoneMap: new Map(),
       iso2CurrencyMap: new Map(),
       countryImage: null,
-      countryDetailsObj: {}
-      // therefore to get the countries associated with the continent
-      // continentCountryMap.get([countryList[0]]) returns an array
+      countryDetailsObj: {},
+      isLoadingDetails: true
     }
     this.continentMap = new Map([['AF', 'Africa'], ['AS', 'Asia'], ['EU', 'Europe'], 
     ['NA', 'North America'], ['OC', 'Oceania'], ['SA', 'South America']]);
@@ -48,6 +47,8 @@ class App extends React.Component {
     this.getCountryDropDown = this.getCountryDropDown.bind(this);
     this.createCountryDetails = this.createCountryDetails.bind(this);
     this.displayCountryDetails = this.displayCountryDetails.bind(this);
+    this.sortMapEntries = this.sortMapEntries.bind(this);
+    this.sortArrayEntries = this.sortArrayEntries.bind(this);
   }
 
 
@@ -91,24 +92,28 @@ class App extends React.Component {
   }
 
   handleContinentChange(evt) {
-    const { continentCountryMap } = this.state;
+    const { continentCountryMap, countryListMap } = this.state;
     const val = evt.target.value;
     if (val) {
-      // now update the list with just these countries ...
-      // I need to put the country list into key/value ones again
+      // now update the list with just these countries
+      // put the country list into key/value ones again
       // iterate through these, and get the corresponding country names
       const countryNames = continentCountryMap.get(val);
       const countryAbbrNames = countryNames.map(co => (
-        [co, this.state.countryListMap.get(co)]
+        [co, countryListMap.get(co)]
       ));
+
+      const sortedAbbrNames = this.sortArrayEntries(countryAbbrNames);
       this.setState({
-        countryArray: countryAbbrNames,
-        chosenContinent: val
+        countryArray: sortedAbbrNames,
+        chosenContinent: val,
+        chosenCountryCode: ""
       });
     } else {
       this.setState({
-        countryArray: Array.from(this.state.countryListMap),
-        chosenContinent: null
+        countryArray: Array.from(countryListMap),
+        chosenContinent: null,
+        chosenCountryCode: ""
       })
     }
   }
@@ -119,17 +124,15 @@ class App extends React.Component {
     fetch('/api/names')
       .then(response => response.json())
       .then(data => {
-
         Object.keys(data).forEach((key) => {
           theCountryList.set(key, data[key]);
-          countryNameAbbrNameList.set(data[key], key);
+          countryNameAbbrNameList.set(key, data[key]);
         });
-        let sortedCountryList = new Map([...theCountryList.entries()].sort());
+        const sortedCountryList = this.sortMapEntries(theCountryList);
         this.setState({
           countryListMap: sortedCountryList,
           fullCountryNameAbbrName: countryNameAbbrNameList
         });
-
       });
   }
 
@@ -159,7 +162,6 @@ class App extends React.Component {
           continentCountryMap: cCountryMap,
           countryContinentMap: countryContinentMap
         });
-
       });
   }
 
@@ -239,9 +241,10 @@ class App extends React.Component {
    * I could not get this to display.  I must be doing wrong with the way I'm trying to access the URL??
    */
   fetchImage() {
+    const { chosenCountryCode } = this.state;
     let image = null;
-    const countryCode = this.state.fullCountryNameAbbrName.get(this.state.chosenCountry);
-    const url = `https://www.countryflags.io/${countryCode}/flat/64.png`;
+    const url = `https://www.countryflags.io/${chosenCountryCode}/flat/64.png`;
+
     fetch(url,
       {
         mode: 'no-cors', // 'cors' by default,
@@ -255,7 +258,6 @@ class App extends React.Component {
           countryImage: image
         }
       );
-      
       this.createCountryDetails();
     })
     
@@ -266,12 +268,13 @@ class App extends React.Component {
   }
 
   getListItems() {
-    const arrayToDisplay = this.state.countryArray.length ? this.state.countryArray : Array.from(this.state.countryListMap);
-    return (this.state.chosenCountry === "" && 
+    const { countryArray, countryListMap, chosenCountryCode } = this.state;
+    const arrayToDisplay = countryArray.length ? countryArray : Array.from(countryListMap);
+    return (chosenCountryCode === "" && 
       <React.Fragment>
         <ul>
           {arrayToDisplay.map(it => (
-            <li key={this.generateUUID()} id={it[0]} onClick={(evt) => this.handleCountrySelection(evt)}>{this.state.countryListMap.get(it[0])}</li>
+            <li key={this.generateUUID()} id={it[0]} onClick={(evt) => this.handleCountrySelection(evt)}>{countryListMap.get(it[0])}</li>
           ))}
         </ul>
       </React.Fragment>
@@ -279,14 +282,15 @@ class App extends React.Component {
   }
 
   getCountryDropDown() {
-    if (this.state.chosenContinent) {
-      const arrayToDisplay = this.state.countryArray.length ? this.state.countryArray : Array.from(this.state.countryListMap);
+    const { chosenContinent, chosenCountryCode, countryArray, countryListMap } = this.state;
+    if (chosenContinent) {
+      const arrayToDisplay = countryArray.length ? countryArray : Array.from(countryListMap);
       return (
         <React.Fragment>
-          <select value={this.state.chosenCountry} onChange={(e) => this.handleCountrySelection(e)} style={{width: '200px'}}>
+          <select id="countrySelect" value={chosenCountryCode} onChange={(e) => this.handleCountrySelection(e)} style={{width: '200px'}}>
           <option value="">(Select a country ...)</option>
             {arrayToDisplay.map(it => (
-              <option value={this.state.countryListMap.get(it[0])} key={this.generateUUID()}>{this.state.countryListMap.get(it[0])}</option>
+              <option value={it[0]} key={this.generateUUID()}>{countryListMap.get(it[0])}</option>
             ))}
           </select>
         </React.Fragment>
@@ -296,71 +300,129 @@ class App extends React.Component {
 
   handleCountrySelection(evt) {
     const target = evt.target;
+    // the dropdown was changed
     if (target.value) {
       this.fetchISO3List();
       this.setState({
-        chosenCountry: target.value
+        chosenCountryCode: target.value
       });
+    // the list was clicked
     } else if (target.id) {
       this.fetchISO3List();
-      this.setState({
-        chosenCountry: target.id
-      });
+      // set the country select to reflect the list click
+      let sel = document.getElementById("countrySelect");
+      if (sel) {
+        sel.value = target.id;
+        this.setState({
+          chosenCountryCode: target.id
+        });
+      } else {
+        // if the user clicks directly on the list, the select is never shown
+        // show the country select, which means set the continent
+        // look up the continent the selected country belongs to
+        const continent = this.state.countryContinentMap.get(target.id);
+        // this is the continent code
+        let continentSelect = document.getElementById("continent");
+        continentSelect.value = continent;
+        this.setState({
+          chosenCountryCode: target.id,
+          chosenContinent: continent
+        });
+      }
+      // this.setState({
+      //   chosenCountryCode: target.id,
+      //   chosenContinent: continent
+      // });
     }
   }
 
   createCountryDetails() {
-      const countryCode = this.state.fullCountryNameAbbrName.get(this.state.chosenCountry);
+    const { chosenCountryCode } = this.state;
       this.setState({
         countryDetailsObj: {
-          selectedCountry: countryCode
-        }
-      })
+          selectedCountry: chosenCountryCode
+        },
+        isLoadingDetails: false
+      });
   }
 
   displayCountryDetails() {
-    // display the information about the chosenCountry
-    // create a structure that contains the following:
-    // 
-    // Full Name
-    // Continent
-    // Three-letter ISO Code
-    // Capital Name
-    // Phone Code
-    // Three-letter Currency Code
-    // Currency Symbol, if avaible, in the currencies.js file
-    // Image of the country's flag (use https://www.countryflags.io/ for the image), if available
-    // <img src="https://www.countryflags.io/:country_code/:style/:size.png"></img>
-    // Link to Wikipedia article (assume wikipedia url is based off country name in /api/names)
-    if (this.state.chosenCountry !== "") {
-      const countryCode = this.state.fullCountryNameAbbrName.get(this.state.chosenCountry);
+    const { isLoadingDetails, chosenCountryCode, fullCountryNameAbbrName, iso2CurrencyMap, 
+      countryImage, countryContinentMap, iso2ToIso3Map, iso2CapitalMap, iso2PhoneMap
+      } = this.state;
+    if (chosenCountryCode !== "") {
+      const countryName = fullCountryNameAbbrName.get(chosenCountryCode);
+
       const currencySymbols = CurrencySymbols.CURRENCY_HTML_CODES;
-      // first get the iso2 currencyCode and then get
-      const currencyCode = this.state.iso2CurrencyMap.get(countryCode);
-      const wikipediaUrl = `https://en.wikipedia.org/wiki/${this.state.chosenCountry}`;
-      let imgTag = <img height="200px" alt="myCountry" src={this.state.countryImage}/>;
+      const currencyCode = iso2CurrencyMap.get(chosenCountryCode);
+
+      const wikipediaUrl = `https://en.wikipedia.org/wiki/${countryName}`;
+
+      let imgTag = <img height="200px" alt="myCountry" src={countryImage}/>;
       const cSymbol = currencySymbols[currencyCode];
-      // imgTag = "<img height='200px' alt='myCountry' src='https://www.countryflags.io/BE/flat/64.png/'>";
       return (
         <div>
-          <ul>
-          <li>Country: {this.state.chosenCountry}</li>
-          <li>Continent: {this.continentMap.get(this.state.countryContinentMap.get(countryCode))}</li>
-          {/* <li>Country code: {this.state.countryDetailsObj.selectedCountry}</li> */}
-          {/* <li><img height='200px' alt='myCountry' src='https://www.countryflags.io/BE/flat/64.png/' /></li> */}
-          <li>ISO code(3 letters): {this.state.iso2ToIso3Map.get(countryCode)}</li>
-          <li>Capital: {this.state.iso2CapitalMap.get(countryCode)}</li>
-          <li>Phone code: {this.state.iso2PhoneMap.get(countryCode)}</li>
-          <li>Currency code: {this.state.iso2CurrencyMap.get(countryCode)}</li>
-          {currencyCode && currencySymbols[currencyCode] && (
-            // I should have decoded this ...
-            <li>Currency symbol: {cSymbol}</li>
-          )}
-          <li><a href='' onClick={() => window.open(wikipediaUrl, "_blank")}>Wikipedia</a></li>
-          </ul>
+          {isLoadingDetails && 
+          <div className="loadingDetails"></div>
+          }
+          {!isLoadingDetails &&
+            <div>
+            <ul>
+            <li>Country: {countryName}</li>
+            <li>Continent: {this.continentMap.get(countryContinentMap.get(chosenCountryCode))}</li>
+            <li>ISO code(3 letters): {iso2ToIso3Map.get(chosenCountryCode)}</li>
+            <li>Capital: {iso2CapitalMap.get(chosenCountryCode)}</li>
+            <li>Phone code: {iso2PhoneMap.get(chosenCountryCode)}</li>
+            <li>Currency code: {iso2CurrencyMap.get(chosenCountryCode)}</li>
+            {currencyCode && currencySymbols[currencyCode] && (
+              // I should decoded this somehow ...
+              <li>Currency symbol: {cSymbol}</li>
+            )}
+            <li><a href='' onClick={() => window.open(wikipediaUrl, "_blank")}>Wikipedia</a></li>
+            </ul>
+          </div>
+        }
         </div>
       )
     }
+  }
+
+  sortMapEntries(theMap) {
+    const sortArray = [];
+
+    theMap.forEach((x, y) => {
+      sortArray.push([x, y]);
+    });
+
+    sortArray.sort();
+
+    const sortedMap = new Map(sortArray);
+    // now reverse the key and value 
+    let newMap = new Map();
+    for (let [key, value] of sortedMap) {
+      newMap.set(value, key);
+    };
+    return newMap;
+  }
+
+  // sort by the second value in the array element
+  sortArrayEntries(theArray) {
+    let revSortArray = [];
+
+    theArray.forEach(item => {
+      revSortArray.push([item[1], item[0]])
+    });
+
+    revSortArray.sort();
+
+   // now put them back in the same order in the individual array
+   let retArray = [];
+
+   revSortArray.forEach(item => {
+    retArray.push([item[1], item[0]]);
+   });
+
+   return retArray;
   }
 }
 
